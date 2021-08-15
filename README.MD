@@ -22,6 +22,12 @@ fn load_character() {
         .expect("Could not read aseprite file.");
 
     let tags = aseprite.tags();
-    let frames = tags["walk"].frames();
+
+    let walk_tag = &tags["walk"];
+    println!("This tag uses these frames: {:?}", walk_tag.frames); // `.frames` is a range
+
+    let all_frames = aseprite.frames();
+    let frames = all_frames.get_for(&walk_tag.frames);
+    let images = frames.get_images();
 }
 ```

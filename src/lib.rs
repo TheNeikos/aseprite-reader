@@ -19,16 +19,16 @@
     //clippy::unwrap_used, // not yet in stable
     clippy::wrong_pub_self_convention
 )]
-
 #![doc = include_str!("../README.MD")]
 
 /// Errors used in this crate
 pub mod error;
 
 /// Raw data types
-/// 
-/// These are used to then construct the main [`Aseprite`] type. 
+///
+/// These are used to then construct the main [`Aseprite`] type.
 pub mod raw;
 
-/// Data structure representing an Aseprite file
-pub struct Aseprite {}
+mod computed;
+
+pub use computed::*;

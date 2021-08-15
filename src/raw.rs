@@ -1,6 +1,9 @@
 use std::convert::TryInto;
 
-use crate::error::{AseResult, AsepriteError, AsepriteParseError};
+use crate::{
+    error::{AseParseResult, AseResult, AsepriteError, AsepriteInvalidError, AsepriteParseError},
+    AsepritePalette,
+};
 
 use flate2::Decompress;
 use nom::{
@@ -24,7 +27,7 @@ pub enum AsepriteColorDepth {
 }
 
 impl AsepriteColorDepth {
-    fn byte_size(&self) -> usize {
+    fn bytes_per_pixel(&self) -> usize {
         match self {
             AsepriteColorDepth::RGBA => 4,
             AsepriteColorDepth::Grayscale => 2,
@@ -75,7 +78,7 @@ pub struct RawAsepriteHeader {
     pub grid_height: u16,
 }
 
-fn color_depth(input: &[u8]) -> AseResult<AsepriteColorDepth> {
+fn color_depth(input: &[u8]) -> AseParseResult<AsepriteColorDepth> {
     let (input, depth) = le_u16(input)?;
     Ok((
         input,
@@ -94,7 +97,7 @@ fn color_depth(input: &[u8]) -> AseResult<AsepriteColorDepth> {
 
 const ASEPRITE_MAGIC_NUMBER: u16 = 0xA5E0;
 
-fn aseprite_header(input: &[u8]) -> AseResult<RawAsepriteHeader> {
+fn aseprite_header(input: &[u8]) -> AseParseResult<RawAsepriteHeader> {
     let input_len = input.len();
     let (input, file_size) = le_u32(input)?;
 
@@ -148,7 +151,7 @@ fn aseprite_header(input: &[u8]) -> AseResult<RawAsepriteHeader> {
     ))
 }
 
-fn aseprite_string(input: &[u8]) -> AseResult<String> {
+fn aseprite_string(input: &[u8]) -> AseParseResult<String> {
     let (input, name_len) = le_u16(input)?;
     let (input, name_bytes) = take(name_len as usize)(input)?;
 
@@ -171,6 +174,7 @@ pub struct RawAsepriteFrame {
 
 /// A full RGBA color
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy)]
 pub struct AsepriteColor {
     pub red: u8,
     pub green: u8,
@@ -178,7 +182,7 @@ pub struct AsepriteColor {
     pub alpha: u8,
 }
 
-fn aseprite_color(input: &[u8]) -> AseResult<AsepriteColor> {
+fn aseprite_color(input: &[u8]) -> AseParseResult<AsepriteColor> {
     let (input, colors) = take(4usize)(input)?;
 
     Ok((
@@ -200,7 +204,7 @@ pub struct RawAsepriteUserData {
     pub color: Option<AsepriteColor>,
 }
 
-fn aseprite_user_data(input: &[u8]) -> AseResult<RawAsepriteUserData> {
+fn aseprite_user_data(input: &[u8]) -> AseParseResult<RawAsepriteUserData> {
     let (input, kind) = le_u32(input)?;
 
     let (input, text) = cond(kind & 0x1 != 0, aseprite_string)(input)?;
@@ -217,7 +221,7 @@ pub enum AsepriteLayerType {
     Group,
 }
 
-fn aseprite_layer_type(input: &[u8]) -> AseResult<AsepriteLayerType> {
+fn aseprite_layer_type(input: &[u8]) -> AseParseResult<AsepriteLayerType> {
     let (input, layer_type) = le_u16(input)?;
 
     Ok((
@@ -234,6 +238,7 @@ fn aseprite_layer_type(input: &[u8]) -> AseResult<AsepriteLayerType> {
     ))
 }
 
+#[derive(Debug)]
 /// The different blend modes
 #[allow(missing_docs)]
 pub enum AsepriteBlendMode {
@@ -258,7 +263,7 @@ pub enum AsepriteBlendMode {
     Divide,
 }
 
-fn aseprite_blend_mode(input: &[u8]) -> AseResult<AsepriteBlendMode> {
+fn aseprite_blend_mode(input: &[u8]) -> AseParseResult<AsepriteBlendMode> {
     let (input, blend_mode) = le_u16(input)?;
 
     Ok((
@@ -307,10 +312,41 @@ pub enum AsepritePixel {
     Indexed(u8),
 }
 
+impl AsepritePixel {
+    /// Get the pixel as an array of RGBA values
+    pub fn get_rgba(
+        &self,
+        palette: Option<&AsepritePalette>,
+        transparent_palette: Option<u8>,
+    ) -> AseResult<[u8; 4]> {
+        match self {
+            AsepritePixel::RGBA(color) => Ok([color.red, color.green, color.blue, color.alpha]),
+            AsepritePixel::Grayscale { intensity, alpha } => Ok([
+                (*intensity / 2) as u8,
+                (*intensity / 2) as u8,
+                (*intensity / 2) as u8,
+                (*alpha / 2) as u8,
+            ]),
+            AsepritePixel::Indexed(idx) => {
+                if transparent_palette != Some(*idx) {
+                    palette
+                        .and_then(|palette| palette.entries.get(*idx as usize))
+                        .map(|color| [color.red, color.green, color.blue, color.alpha])
+                        .ok_or(AsepriteError::InvalidConfiguration(
+                            AsepriteInvalidError::InvalidPaletteIndex(*idx as usize),
+                        ))
+                } else {
+                    Ok([0; 4])
+                }
+            }
+        }
+    }
+}
+
 fn aseprite_pixel<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
-) -> AseResult<'a, AsepritePixel> {
+) -> AseParseResult<'a, AsepritePixel> {
     match header.color_depth {
         AsepriteColorDepth::RGBA => {
             let (input, color) = aseprite_color(input)?;
@@ -335,7 +371,7 @@ fn aseprite_pixels<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
     amt: usize,
-) -> AseResult<'a, Vec<AsepritePixel>> {
+) -> AseParseResult<'a, Vec<AsepritePixel>> {
     count(|input: &'a [u8]| aseprite_pixel(input, header), amt)(input)
 }
 
@@ -366,11 +402,21 @@ pub enum RawAsepriteCel {
     },
 }
 
+impl std::fmt::Debug for RawAsepriteCel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Raw { .. } => write!(f, "Raw"),
+            Self::Linked { .. } => write!(f, "Linked"),
+            Self::Compressed { .. } => write!(f, "Compressed"),
+        }
+    }
+}
+
 fn aseprite_cel<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
     cel_type: u16,
-) -> AseResult<'a, RawAsepriteCel> {
+) -> AseParseResult<'a, RawAsepriteCel> {
     match cel_type {
         0 => {
             let (input, width) = le_u16(input)?;
@@ -402,7 +448,7 @@ fn aseprite_cel<'a>(
             // assert_eq!(outer_height, height);
 
             let mut pixel_data =
-                vec![0; width as usize * height as usize * header.color_depth.byte_size()];
+                vec![0; width as usize * height as usize * header.color_depth.bytes_per_pixel()];
 
             let mut zlib_decompressor = Decompress::new(true);
             let status = zlib_decompressor
@@ -439,6 +485,7 @@ fn aseprite_cel<'a>(
     }
 }
 
+#[derive(Debug)]
 /// Animation Direction
 pub enum AsepriteAnimationDirection {
     /// Forward animation direction
@@ -455,7 +502,7 @@ pub enum AsepriteAnimationDirection {
     PingPong,
 }
 
-fn aseprite_anim_direction(input: &[u8]) -> AseResult<AsepriteAnimationDirection> {
+fn aseprite_anim_direction(input: &[u8]) -> AseParseResult<AsepriteAnimationDirection> {
     let (input, dir) = le_u8(input)?;
 
     Ok((
@@ -485,7 +532,7 @@ pub struct RawAsepriteTag {
     pub name: String,
 }
 
-fn aseprite_tag(input: &[u8]) -> AseResult<RawAsepriteTag> {
+fn aseprite_tag(input: &[u8]) -> AseParseResult<RawAsepriteTag> {
     let (input, from) = le_u16(input)?;
     let (input, to) = le_u16(input)?;
     let (input, anim_direction) = aseprite_anim_direction(input)?;
@@ -512,6 +559,14 @@ pub enum RawAsepriteChunk {
     /// All the layer chunks determine the general layer layout
     Layer {
         /// The flags set for this layer
+        ///
+        /// 1 = Visible
+        /// 2 = Editable
+        /// 4 = Lock Movement
+        /// 8 = Background
+        /// 16 = Prefer linked cels
+        /// 32 = The layer group should be displayed collapsed
+        /// 64 = The layer is a reference layer
         flags: u16,
         /// Type of the layer
         layer_type: AsepriteLayerType,
@@ -613,7 +668,7 @@ pub struct RawAsepriteIccProfile {
     pub icc_profile: Vec<u8>,
 }
 
-fn aseprite_icc_profile(input: &[u8]) -> AseResult<RawAsepriteIccProfile> {
+fn aseprite_icc_profile(input: &[u8]) -> AseParseResult<RawAsepriteIccProfile> {
     let (input, icc_profile) = length_data(le_u32)(input)?;
 
     Ok((
@@ -624,7 +679,7 @@ fn aseprite_icc_profile(input: &[u8]) -> AseResult<RawAsepriteIccProfile> {
     ))
 }
 
-fn color_profile_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn color_profile_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, profile_type) = le_u16(input)?;
     let (input, flags) = le_u16(input)?;
     let (input, gamma) = aseprite_fixed(input)?;
@@ -675,7 +730,7 @@ pub struct RawAsepriteNinePatchInfo {
     pub height: u32,
 }
 
-fn aseprite_nine_patch_info(input: &[u8]) -> AseResult<RawAsepriteNinePatchInfo> {
+fn aseprite_nine_patch_info(input: &[u8]) -> AseParseResult<RawAsepriteNinePatchInfo> {
     let (input, x_center) = le_i32(input)?;
     let (input, y_center) = le_i32(input)?;
     let (input, width) = le_u32(input)?;
@@ -700,14 +755,14 @@ pub struct RawAsepritePivot {
     pub y_pivot: i32,
 }
 
-fn aseprite_pivot(input: &[u8]) -> AseResult<RawAsepritePivot> {
+fn aseprite_pivot(input: &[u8]) -> AseParseResult<RawAsepritePivot> {
     let (input, x_pivot) = le_i32(input)?;
     let (input, y_pivot) = le_i32(input)?;
 
     Ok((input, RawAsepritePivot { x_pivot, y_pivot }))
 }
 
-fn aseprite_slice(input: &[u8], flags: u32) -> AseResult<RawAsepriteSlice> {
+fn aseprite_slice(input: &[u8], flags: u32) -> AseParseResult<RawAsepriteSlice> {
     let (input, frame) = le_u32(input)?;
     let (input, x_origin) = le_i32(input)?;
     let (input, y_origin) = le_i32(input)?;
@@ -734,11 +789,11 @@ fn aseprite_slices(
     input: &[u8],
     slice_count: usize,
     flags: u32,
-) -> AseResult<Vec<RawAsepriteSlice>> {
+) -> AseParseResult<Vec<RawAsepriteSlice>> {
     count(|input| aseprite_slice(input, flags), slice_count)(input)
 }
 
-fn slice_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn slice_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, slice_count) = le_u32(input)?;
     let (input, flags) = le_u32(input)?;
     let (input, _) = le_u32(input)?;
@@ -755,7 +810,7 @@ fn slice_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
     ))
 }
 
-fn user_data_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn user_data_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, data) = aseprite_user_data(input)?;
 
     Ok((input, RawAsepriteChunk::UserData { data }))
@@ -769,7 +824,7 @@ pub struct RawAsepritePaletteEntry {
     pub name: Option<String>,
 }
 
-fn aseprite_palette(input: &[u8]) -> AseResult<RawAsepritePaletteEntry> {
+fn aseprite_palette(input: &[u8]) -> AseParseResult<RawAsepritePaletteEntry> {
     let (input, flags) = le_u16(input)?;
     let (input, color) = aseprite_color(input)?;
 
@@ -781,11 +836,11 @@ fn aseprite_palette(input: &[u8]) -> AseResult<RawAsepritePaletteEntry> {
 fn aseprite_palettes(
     input: &[u8],
     palette_count: usize,
-) -> AseResult<Vec<RawAsepritePaletteEntry>> {
+) -> AseParseResult<Vec<RawAsepritePaletteEntry>> {
     count(aseprite_palette, palette_count)(input)
 }
 
-fn palette_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn palette_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, palette_size) = le_u32(input)?;
     let (input, from_color) = le_u32(input)?;
     let (input, to_color) = le_u32(input)?;
@@ -804,11 +859,11 @@ fn palette_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
     ))
 }
 
-fn tags(input: &[u8], tag_count: u16) -> AseResult<Vec<RawAsepriteTag>> {
+fn tags(input: &[u8], tag_count: u16) -> AseParseResult<Vec<RawAsepriteTag>> {
     count(aseprite_tag, tag_count as usize)(input)
 }
 
-fn tags_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn tags_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, tag_count) = le_u16(input)?;
     let (input, _) = take(8usize)(input)?;
     let (input, tags) = tags(input, tag_count)?;
@@ -816,13 +871,13 @@ fn tags_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
     Ok((input, RawAsepriteChunk::Tags { tags }))
 }
 
-fn aseprite_fixed(input: &[u8]) -> AseResult<f64> {
+fn aseprite_fixed(input: &[u8]) -> AseParseResult<f64> {
     let (input, whole) = le_u32(input)?;
 
     Ok((input, whole as f64 / 0x10000 as f64))
 }
 
-fn cel_extra_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn cel_extra_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, flags) = le_u32(input)?;
     let (input, x) = aseprite_fixed(input)?;
     let (input, y) = aseprite_fixed(input)?;
@@ -844,7 +899,7 @@ fn cel_extra_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
 fn cel_chunk<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
-) -> AseResult<'a, RawAsepriteChunk> {
+) -> AseParseResult<'a, RawAsepriteChunk> {
     let (input, layer_index) = le_u16(input)?;
     let (input, x) = le_i16(input)?;
     let (input, y) = le_i16(input)?;
@@ -866,7 +921,7 @@ fn cel_chunk<'a>(
     ))
 }
 
-fn layer_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
+fn layer_chunk(input: &[u8]) -> AseParseResult<RawAsepriteChunk> {
     let (input, flags) = le_u16(input)?;
     let (input, layer_type) = aseprite_layer_type(input)?;
     let (input, layer_child) = le_u16(input)?;
@@ -895,7 +950,7 @@ fn layer_chunk(input: &[u8]) -> AseResult<RawAsepriteChunk> {
 fn aseprite_chunk<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
-) -> AseResult<'a, Option<RawAsepriteChunk>> {
+) -> AseParseResult<'a, Option<RawAsepriteChunk>> {
     let input_len = input.len();
     let (input, chunk_size) = le_u32(input)?;
     let (input, chunk_type) = le_u16(input)?;
@@ -958,7 +1013,7 @@ const ASEPRITE_FRAME_MAGIC_NUMBER: u16 = 0xF1FA;
 fn aseprite_frame<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
-) -> AseResult<'a, RawAsepriteFrame> {
+) -> AseParseResult<'a, RawAsepriteFrame> {
     let (input, magic_number) = tag(&ASEPRITE_FRAME_MAGIC_NUMBER.to_le_bytes())(input)?;
     let (input, small_chunk_count) = le_u16(input)?;
     let (input, duration_ms) = le_u16(input)?;
@@ -996,11 +1051,13 @@ fn aseprite_frame<'a>(
 fn aseprite_frames<'a>(
     input: &'a [u8],
     header: &'_ RawAsepriteHeader,
-) -> AseResult<'a, Vec<RawAsepriteFrame>> {
-    all_consuming(many1(|input: &'a [u8]| -> AseResult<RawAsepriteFrame> {
-        let (input, _length) = le_u32(input)?;
-        aseprite_frame(input, header)
-    }))(input)
+) -> AseParseResult<'a, Vec<RawAsepriteFrame>> {
+    all_consuming(many1(
+        |input: &'a [u8]| -> AseParseResult<RawAsepriteFrame> {
+            let (input, _length) = le_u32(input)?;
+            aseprite_frame(input, header)
+        },
+    ))(input)
 }
 
 /// A raw .aseprite file
@@ -1011,7 +1068,7 @@ pub struct RawAseprite {
     pub frames: Vec<RawAsepriteFrame>,
 }
 
-fn aseprite(input: &[u8]) -> AseResult<RawAseprite> {
+fn aseprite(input: &[u8]) -> AseParseResult<RawAseprite> {
     let (input, header) = aseprite_header(input)?;
     let (input, frames) = aseprite_frames(input, &header)?;
 
