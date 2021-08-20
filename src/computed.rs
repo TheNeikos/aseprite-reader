@@ -53,7 +53,7 @@ impl Aseprite {
     }
 
     /// Get the slices inside this aseprite
-    pub fn slice(&self) -> AsepriteSlices {
+    pub fn slices(&self) -> AsepriteSlices {
         AsepriteSlices { aseprite: self }
     }
 }
