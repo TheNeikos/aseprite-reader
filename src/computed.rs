@@ -11,8 +11,8 @@ use crate::{
     error::{AseResult, AsepriteError, AsepriteInvalidError},
     raw::{
         AsepriteAnimationDirection, AsepriteBlendMode, AsepriteColor, AsepriteColorDepth,
-        AsepriteLayerType, AsepritePixel, RawAseprite, RawAsepriteCel, RawAsepriteChunk,
-        RawAsepritePaletteEntry,
+        AsepriteLayerType, AsepriteNinePatchInfo, AsepritePixel, RawAseprite, RawAsepriteCel,
+        RawAsepriteChunk, RawAsepritePaletteEntry,
     },
 };
 
@@ -21,6 +21,7 @@ use crate::{
 pub struct Aseprite {
     dimensions: (u16, u16),
     tags: HashMap<String, AsepriteTag>,
+    slices: HashMap<String, AsepriteSlice>,
     layers: BTreeMap<usize, AsepriteLayer>,
     frame_count: usize,
     palette: Option<AsepritePalette>,
@@ -50,6 +51,11 @@ impl Aseprite {
     pub fn frame_infos(&self) -> &[AsepriteFrameInfo] {
         &self.frame_infos
     }
+
+    /// Get the slices inside this aseprite
+    pub fn slice(&self) -> AsepriteSlices {
+        AsepriteSlices { aseprite: self }
+    }
 }
 
 impl Aseprite {
@@ -59,6 +65,7 @@ impl Aseprite {
         let mut layers = BTreeMap::new();
         let mut palette = None;
         let mut frame_infos = vec![];
+        let mut slices = HashMap::new();
 
         let frame_count = raw.frames.len();
 
@@ -142,8 +149,31 @@ impl Aseprite {
                     crate::raw::RawAsepriteChunk::Slice {
                         flags,
                         name,
-                        slices,
-                    } => error!("Not yet implemented slice"),
+                        slices: raw_slices,
+                    } => slices.extend(raw_slices.into_iter().map(
+                        |crate::raw::RawAsepriteSlice {
+                             frame,
+                             x_origin,
+                             y_origin,
+                             width,
+                             height,
+                             nine_patch_info,
+                             pivot,
+                         }| {
+                            (
+                                name.clone(),
+                                AsepriteSlice {
+                                    name: name.clone(),
+                                    valid_frame: frame as u16,
+                                    position_x: x_origin,
+                                    position_y: y_origin,
+                                    width,
+                                    height,
+                                    nine_patch_info,
+                                },
+                            )
+                        },
+                    )),
                     crate::raw::RawAsepriteChunk::ColorProfile {
                         profile_type,
                         flags,
@@ -166,6 +196,7 @@ impl Aseprite {
             frame_count,
             palette,
             frame_infos,
+            slices,
         })
     }
 
@@ -251,6 +282,25 @@ pub struct AsepriteTag {
     pub animation_direction: AsepriteAnimationDirection,
     /// The tag name
     pub name: String,
+}
+
+#[derive(Debug)]
+/// A single Aseprite slice
+pub struct AsepriteSlice {
+    /// The slice name
+    pub name: String,
+    /// The frame from which it is valid
+    pub valid_frame: u16,
+    /// The slice's x position
+    pub position_x: i32,
+    /// The slice's y position
+    pub position_y: i32,
+    /// The slice's width
+    pub width: u32,
+    /// The slice's height
+    pub height: u32,
+    /// Nine-Patch Info if it exists
+    pub nine_patch_info: Option<AsepriteNinePatchInfo>,
 }
 
 /// The layers inside an aseprite file
@@ -435,6 +485,48 @@ impl<'a> AsepriteFrames<'a> {
     }
 }
 
+/// The slices contained in an aseprite
+pub struct AsepriteSlices<'a> {
+    aseprite: &'a Aseprite,
+}
+
+impl<'a> AsepriteSlices<'a> {
+    /// Get a slice by name
+    pub fn get_by_name(&self, name: &str) -> Option<&AsepriteSlice> {
+        self.aseprite.slices.get(name)
+    }
+
+    /// Get all slices in this aseprite
+    pub fn get_all(&self) -> impl Iterator<Item = &AsepriteSlice> + '_ {
+        self.aseprite.slices.values()
+    }
+
+    /// Get the images represented by the slices
+    pub fn get_images<I: Iterator<Item = &'a AsepriteSlice>>(
+        &self,
+        wanted_slices: I,
+    ) -> AseResult<Vec<RgbaImage>> {
+        let mut slices = vec![];
+
+        for slice in wanted_slices {
+            let frame = image_for_frame(self.aseprite, slice.valid_frame)?;
+
+            let frame = image::imageops::crop_imm(
+                &frame,
+                slice.position_x.min(0) as u32,
+                slice.position_y.min(0) as u32,
+                slice.width,
+                slice.height,
+            )
+            .to_image();
+
+            slices.push(frame);
+        }
+
+        Ok(slices)
+    }
+}
+
 /// Information about a single animation frame
 #[derive(Debug)]
 pub struct AsepriteFrameInfo {
@@ -459,43 +551,66 @@ impl<'a> AsepriteFrameRange<'a> {
         let mut frames = vec![];
         info!("Drawing with range: {:?}", self.range);
         for frame in self.range.clone() {
-            let dim = self.aseprite.dimensions;
-            let mut image = RgbaImage::new(dim.0 as u32, dim.1 as u32);
-            for (_layer_id, layer) in &self.aseprite.layers {
-                if !layer.is_visible() {
-                    continue;
-                }
+            let image = image_for_frame(&self.aseprite, frame)?;
+            frames.push(image);
+        }
 
-                let cel = layer.get_cel(frame as usize)?;
+        return Ok(frames);
+    }
+}
 
-                let mut write_to_image = |cel: &AsepriteCel,
-                                          width: u16,
-                                          height: u16,
-                                          pixels: &[AsepritePixel]|
-                 -> AseResult<()> {
-                    for x in 0..width {
-                        for y in 0..height {
-                            let pix_x = cel.x as i16 + x as i16;
-                            let pix_y = cel.y as i16 + y as i16;
+fn image_for_frame(aseprite: &Aseprite, frame: u16) -> AseResult<RgbaImage> {
+    let dim = aseprite.dimensions;
+    let mut image = RgbaImage::new(dim.0 as u32, dim.1 as u32);
+    for (_layer_id, layer) in &aseprite.layers {
+        if !layer.is_visible() {
+            continue;
+        }
 
-                            if pix_x < 0 || pix_y < 0 {
-                                continue;
-                            }
-                            let raw_pixel = &pixels[(x + y * width) as usize];
-                            let pixel = Rgba(raw_pixel.get_rgba(
-                                self.aseprite.palette.as_ref(),
-                                self.aseprite.transparent_palette,
-                            )?);
+        let cel = layer.get_cel(frame as usize)?;
 
-                            image
-                                .get_pixel_mut(pix_x as u32, pix_y as u32)
-                                .blend(&pixel);
-                        }
+        let mut write_to_image = |cel: &AsepriteCel,
+                                  width: u16,
+                                  height: u16,
+                                  pixels: &[AsepritePixel]|
+         -> AseResult<()> {
+            for x in 0..width {
+                for y in 0..height {
+                    let pix_x = cel.x as i16 + x as i16;
+                    let pix_y = cel.y as i16 + y as i16;
+
+                    if pix_x < 0 || pix_y < 0 {
+                        continue;
                     }
-                    Ok(())
-                };
+                    let raw_pixel = &pixels[(x + y * width) as usize];
+                    let pixel = Rgba(
+                        raw_pixel
+                            .get_rgba(aseprite.palette.as_ref(), aseprite.transparent_palette)?,
+                    );
 
-                match &cel.raw_cel {
+                    image
+                        .get_pixel_mut(pix_x as u32, pix_y as u32)
+                        .blend(&pixel);
+                }
+            }
+            Ok(())
+        };
+
+        match &cel.raw_cel {
+            RawAsepriteCel::Raw {
+                width,
+                height,
+                pixels,
+            }
+            | RawAsepriteCel::Compressed {
+                width,
+                height,
+                pixels,
+            } => {
+                write_to_image(&cel, *width, *height, pixels)?;
+            }
+            RawAsepriteCel::Linked { frame_position } => {
+                match &layer.get_cel(*frame_position as usize - 1)?.raw_cel {
                     RawAsepriteCel::Raw {
                         width,
                         height,
@@ -509,32 +624,15 @@ impl<'a> AsepriteFrameRange<'a> {
                         write_to_image(&cel, *width, *height, pixels)?;
                     }
                     RawAsepriteCel::Linked { frame_position } => {
-                        match &layer.get_cel(*frame_position as usize - 1)?.raw_cel {
-                            RawAsepriteCel::Raw {
-                                width,
-                                height,
-                                pixels,
-                            }
-                            | RawAsepriteCel::Compressed {
-                                width,
-                                height,
-                                pixels,
-                            } => {
-                                write_to_image(&cel, *width, *height, pixels)?;
-                            }
-                            RawAsepriteCel::Linked { frame_position } => {
-                                error!("Tried to draw a linked cel twice!");
-                                return Err(AsepriteError::InvalidConfiguration(
-                                    AsepriteInvalidError::InvalidFrame(*frame_position as usize),
-                                ));
-                            }
-                        }
+                        error!("Tried to draw a linked cel twice!");
+                        return Err(AsepriteError::InvalidConfiguration(
+                            AsepriteInvalidError::InvalidFrame(*frame_position as usize),
+                        ));
                     }
                 }
             }
-            frames.push(image);
         }
-
-        return Ok(frames);
     }
+
+    Ok(image)
 }

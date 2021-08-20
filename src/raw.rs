@@ -713,13 +713,14 @@ pub struct RawAsepriteSlice {
     /// slice height
     pub height: u32,
     /// 9-Patch info, if any
-    pub nine_patch_info: Option<RawAsepriteNinePatchInfo>,
+    pub nine_patch_info: Option<AsepriteNinePatchInfo>,
     /// A pivot, if any
-    pub pivot: Option<RawAsepritePivot>,
+    pub pivot: Option<AsepritePivot>,
 }
 
+#[derive(Debug)]
 /// 9-Patch slice info
-pub struct RawAsepriteNinePatchInfo {
+pub struct AsepriteNinePatchInfo {
     /// x center, relative to slice bounds
     pub x_center: i32,
     /// y center, relative to slice bounds
@@ -730,7 +731,7 @@ pub struct RawAsepriteNinePatchInfo {
     pub height: u32,
 }
 
-fn aseprite_nine_patch_info(input: &[u8]) -> AseParseResult<RawAsepriteNinePatchInfo> {
+fn aseprite_nine_patch_info(input: &[u8]) -> AseParseResult<AsepriteNinePatchInfo> {
     let (input, x_center) = le_i32(input)?;
     let (input, y_center) = le_i32(input)?;
     let (input, width) = le_u32(input)?;
@@ -738,7 +739,7 @@ fn aseprite_nine_patch_info(input: &[u8]) -> AseParseResult<RawAsepriteNinePatch
 
     Ok((
         input,
-        RawAsepriteNinePatchInfo {
+        AsepriteNinePatchInfo {
             x_center,
             y_center,
             width,
@@ -748,18 +749,18 @@ fn aseprite_nine_patch_info(input: &[u8]) -> AseParseResult<RawAsepriteNinePatch
 }
 
 /// A raw pivot inside a slice
-pub struct RawAsepritePivot {
+pub struct AsepritePivot {
     /// x position, relative to origin
     pub x_pivot: i32,
     /// y position, relative to origin
     pub y_pivot: i32,
 }
 
-fn aseprite_pivot(input: &[u8]) -> AseParseResult<RawAsepritePivot> {
+fn aseprite_pivot(input: &[u8]) -> AseParseResult<AsepritePivot> {
     let (input, x_pivot) = le_i32(input)?;
     let (input, y_pivot) = le_i32(input)?;
 
-    Ok((input, RawAsepritePivot { x_pivot, y_pivot }))
+    Ok((input, AsepritePivot { x_pivot, y_pivot }))
 }
 
 fn aseprite_slice(input: &[u8], flags: u32) -> AseParseResult<RawAsepriteSlice> {
