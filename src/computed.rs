@@ -485,6 +485,30 @@ impl<'a> AsepriteFrames<'a> {
     }
 }
 
+#[derive(Debug, Hash, PartialEq, Eq)]
+/// The nine slices in a nine-patch image
+#[allow(missing_docs)]
+pub enum NineSlice {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    RightCenter,
+    BottomRight,
+    BottomCenter,
+    BottomLeft,
+    LeftCenter,
+    Center,
+}
+
+/// A single slice image
+///
+/// Only contains nine-patch info if the aseprite also contained one
+#[allow(missing_docs)]
+pub struct AsepriteSliceImage {
+    pub image: RgbaImage,
+    pub nine_slices: Option<HashMap<NineSlice, RgbaImage>>,
+}
+
 /// The slices contained in an aseprite
 pub struct AsepriteSlices<'a> {
     aseprite: &'a Aseprite,
@@ -505,13 +529,13 @@ impl<'a> AsepriteSlices<'a> {
     pub fn get_images<I: Iterator<Item = &'a AsepriteSlice>>(
         &self,
         wanted_slices: I,
-    ) -> AseResult<Vec<RgbaImage>> {
+    ) -> AseResult<Vec<AsepriteSliceImage>> {
         let mut slices = vec![];
 
         for slice in wanted_slices {
             let frame = image_for_frame(self.aseprite, slice.valid_frame)?;
 
-            let frame = image::imageops::crop_imm(
+            let image = image::imageops::crop_imm(
                 &frame,
                 slice.position_x.min(0) as u32,
                 slice.position_y.min(0) as u32,
@@ -520,7 +544,100 @@ impl<'a> AsepriteSlices<'a> {
             )
             .to_image();
 
-            slices.push(frame);
+            let slice_image = AsepriteSliceImage {
+                nine_slices: slice.nine_patch_info.as_ref().map(|info| {
+                    let mut map: HashMap<_, RgbaImage> = HashMap::new();
+
+                    let patch_x = info.width - info.x_center as u32 / 2;
+                    let patch_y = info.height - info.y_center as u32 / 2;
+
+                    let x = 0;
+                    let y = 0;
+                    let width = patch_x;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::TopLeft,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x;
+                    let y = 0;
+                    let width = info.width;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::TopCenter,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x + info.width;
+                    let y = 0;
+                    let width = patch_x;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::TopRight,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x + info.width;
+                    let y = patch_y;
+                    let width = patch_x;
+                    let height = info.height;
+                    map.insert(
+                        NineSlice::RightCenter,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x + info.width;
+                    let y = info.height + patch_y;
+                    let width = patch_x;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::BottomRight,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x;
+                    let y = patch_y + info.height;
+                    let width = info.width;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::BottomCenter,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = 0;
+                    let y = patch_y + info.height;
+                    let width = patch_x;
+                    let height = patch_y;
+                    map.insert(
+                        NineSlice::BottomLeft,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = 0;
+                    let y = patch_y;
+                    let width = patch_x;
+                    let height = info.height;
+                    map.insert(
+                        NineSlice::LeftCenter,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    let x = patch_x;
+                    let y = patch_y;
+                    let width = info.width;
+                    let height = info.height;
+                    map.insert(
+                        NineSlice::Center,
+                        image::imageops::crop_imm(&image, x, y, width, height).to_image(),
+                    );
+
+                    map
+                }),
+                image,
+            };
+
+            slices.push(slice_image);
         }
 
         Ok(slices)
