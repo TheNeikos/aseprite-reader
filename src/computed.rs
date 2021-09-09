@@ -548,6 +548,8 @@ impl<'a> AsepriteSlices<'a> {
                 nine_slices: slice.nine_patch_info.as_ref().map(|info| {
                     let mut map: HashMap<_, RgbaImage> = HashMap::new();
 
+                    info!("Info: {:?}", info);
+
                     let patch_x = info.width - info.x_center as u32 / 2;
                     let patch_y = info.height - info.y_center as u32 / 2;
 
