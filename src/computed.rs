@@ -537,8 +537,8 @@ impl<'a> AsepriteSlices<'a> {
 
             let image = image::imageops::crop_imm(
                 &frame,
-                slice.position_x.min(0) as u32,
-                slice.position_y.min(0) as u32,
+                slice.position_x.max(0) as u32,
+                slice.position_y.max(0) as u32,
                 slice.width,
                 slice.height,
             )
