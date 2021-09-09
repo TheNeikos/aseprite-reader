@@ -550,8 +550,8 @@ impl<'a> AsepriteSlices<'a> {
 
                     info!("Info: {:?}", info);
 
-                    let patch_x = info.width - info.x_center as u32 / 2;
-                    let patch_y = info.height - info.y_center as u32 / 2;
+                    let patch_x = info.x_center;
+                    let patch_y = info.y_center;
 
                     let x = 0;
                     let y = 0;
