@@ -548,8 +548,6 @@ impl<'a> AsepriteSlices<'a> {
                 nine_slices: slice.nine_patch_info.as_ref().map(|info| {
                     let mut map: HashMap<_, RgbaImage> = HashMap::new();
 
-                    info!("Info: {:?}", info);
-
                     let patch_x = info.x_center as u32;
                     let patch_y = info.y_center as u32;
 
@@ -668,7 +666,6 @@ impl<'a> AsepriteFrameRange<'a> {
     /// Get the images represented by this range
     pub fn get_images(&self) -> AseResult<Vec<RgbaImage>> {
         let mut frames = vec![];
-        info!("Drawing with range: {:?}", self.range);
         for frame in self.range.clone() {
             let image = image_for_frame(&self.aseprite, frame)?;
             frames.push(image);
