@@ -5,7 +5,7 @@ use std::{
 };
 
 use image::{Pixel, Rgba, RgbaImage};
-use tracing::{error, info};
+use tracing::error;
 
 use crate::{
     error::{AseResult, AsepriteError, AsepriteInvalidError},
