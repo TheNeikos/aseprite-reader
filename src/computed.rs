@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Data structure representing an Aseprite file
 pub struct Aseprite {
     dimensions: (u16, u16),
@@ -219,7 +219,7 @@ impl Aseprite {
 
 /// The palette entries in the aseprite file
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AsepritePalette {
     pub entries: Vec<AsepriteColor>,
 }
@@ -273,7 +273,7 @@ impl<'a, 'r> Index<&'r str> for AsepriteTags<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A single Aseprite tag
 pub struct AsepriteTag {
     /// The frames which this tag represents
@@ -284,7 +284,7 @@ pub struct AsepriteTag {
     pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A single Aseprite slice
 pub struct AsepriteSlice {
     /// The slice name
@@ -326,7 +326,7 @@ impl<'a> AsepriteLayers<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// An aseprite layer
 pub enum AsepriteLayer {
     /// A layer group
@@ -445,7 +445,7 @@ impl AsepriteLayer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A single cel in a frame in a layer
 pub struct AsepriteCel {
     x: f64,
@@ -485,7 +485,7 @@ impl<'a> AsepriteFrames<'a> {
     }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 /// The nine slices in a nine-patch image
 #[allow(missing_docs)]
 pub enum NineSlice {
@@ -645,7 +645,7 @@ impl<'a> AsepriteSlices<'a> {
 }
 
 /// Information about a single animation frame
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AsepriteFrameInfo {
     /// The delay of this frame in milliseconds
     pub delay_ms: usize,

@@ -238,7 +238,7 @@ fn aseprite_layer_type(input: &[u8]) -> AseParseResult<AsepriteLayerType> {
     ))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 /// The different blend modes
 #[allow(missing_docs)]
 pub enum AsepriteBlendMode {
@@ -297,6 +297,7 @@ fn aseprite_blend_mode(input: &[u8]) -> AseParseResult<AsepriteBlendMode> {
     ))
 }
 
+#[derive(Debug, Clone)]
 /// A single pixel
 pub enum AsepritePixel {
     /// Pixel in RGBA format
@@ -375,6 +376,7 @@ fn aseprite_pixels<'a>(
     count(|input: &'a [u8]| aseprite_pixel(input, header), amt)(input)
 }
 
+#[derive(Clone)]
 /// Raw Cel
 pub enum RawAsepriteCel {
     /// Raw Cel Data
@@ -485,7 +487,7 @@ fn aseprite_cel<'a>(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 /// Animation Direction
 pub enum AsepriteAnimationDirection {
     /// Forward animation direction
@@ -718,7 +720,7 @@ pub struct RawAsepriteSlice {
     pub pivot: Option<AsepritePivot>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// 9-Patch slice info
 pub struct AsepriteNinePatchInfo {
     /// x center, relative to slice bounds
