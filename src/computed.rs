@@ -571,7 +571,7 @@ impl<'a> AsepriteSlices<'a> {
 
                     let x = patch_x + info.width;
                     let y = 0;
-                    let width = patch_x;
+                    let width = slice.width - info.width - patch_x;
                     let height = patch_y;
                     map.insert(
                         NineSlice::TopRight,
@@ -580,7 +580,7 @@ impl<'a> AsepriteSlices<'a> {
 
                     let x = patch_x + info.width;
                     let y = patch_y;
-                    let width = patch_x;
+                    let width = slice.width - info.width - patch_x;
                     let height = info.height;
                     map.insert(
                         NineSlice::RightCenter,
@@ -589,8 +589,8 @@ impl<'a> AsepriteSlices<'a> {
 
                     let x = patch_x + info.width;
                     let y = info.height + patch_y;
-                    let width = patch_x;
-                    let height = patch_y;
+                    let width = slice.width - info.width - patch_x;
+                    let height = slice.height - info.height - patch_y;
                     map.insert(
                         NineSlice::BottomRight,
                         image::imageops::crop_imm(&image, x, y, width, height).to_image(),
@@ -599,7 +599,7 @@ impl<'a> AsepriteSlices<'a> {
                     let x = patch_x;
                     let y = patch_y + info.height;
                     let width = info.width;
-                    let height = patch_y;
+                    let height = slice.height - info.height - patch_y;
                     map.insert(
                         NineSlice::BottomCenter,
                         image::imageops::crop_imm(&image, x, y, width, height).to_image(),
@@ -608,7 +608,7 @@ impl<'a> AsepriteSlices<'a> {
                     let x = 0;
                     let y = patch_y + info.height;
                     let width = patch_x;
-                    let height = patch_y;
+                    let height = slice.height - info.height - patch_y;
                     map.insert(
                         NineSlice::BottomLeft,
                         image::imageops::crop_imm(&image, x, y, width, height).to_image(),
