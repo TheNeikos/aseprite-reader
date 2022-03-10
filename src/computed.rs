@@ -127,7 +127,7 @@ impl Aseprite {
                             (
                                 raw_tag.name.clone(),
                                 AsepriteTag {
-                                    frames: raw_tag.from..raw_tag.to,
+                                    frames: raw_tag.from..raw_tag.to + 1,
                                     animation_direction: raw_tag.anim_direction,
                                     name: raw_tag.name,
                                 },
