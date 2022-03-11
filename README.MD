@@ -1,6 +1,8 @@
 # Aseprite Reader
 
-`aseprite-reader` is a parsing crate for `.aseprite` files, made by the [Aseprite Editor](https://www.aseprite.org/).
+> ❕ Note: This, `aseprite-reader2`, is a fork of https://github.com/TheNeikos/aseprite-reader.
+
+`aseprite-reader2` is a parsing crate for `.aseprite` files, made by the [Aseprite Editor](https://www.aseprite.org/).
 
 It's focus is on speed and completeness[^1].
 
