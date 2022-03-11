@@ -1,5 +1,5 @@
 [package]
-name = "aseprite-reader"
+name = "aseprite-reader2"
 authors = ["Neikos <neikos@neikos.email>"]
 version = "0.1.0"
 edition = "2018"
