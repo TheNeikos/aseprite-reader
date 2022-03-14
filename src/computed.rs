@@ -127,7 +127,7 @@ impl Aseprite {
                             (
                                 raw_tag.name.clone(),
                                 AsepriteTag {
-                                    frames: raw_tag.from..raw_tag.to,
+                                    frames: raw_tag.from..raw_tag.to + 1,
                                     animation_direction: raw_tag.anim_direction,
                                     name: raw_tag.name,
                                 },
@@ -726,7 +726,7 @@ fn image_for_frame(aseprite: &Aseprite, frame: u16) -> AseResult<RgbaImage> {
                 write_to_image(&cel, *width, *height, pixels)?;
             }
             RawAsepriteCel::Linked { frame_position } => {
-                match &layer.get_cel(*frame_position as usize - 1)?.raw_cel {
+                match &layer.get_cel(*frame_position as usize)?.raw_cel {
                     RawAsepriteCel::Raw {
                         width,
                         height,

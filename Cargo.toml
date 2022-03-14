@@ -1,8 +1,10 @@
 [package]
-name = "aseprite-reader"
+name = "aseprite-reader2"
 authors = ["Neikos <neikos@neikos.email>"]
 version = "0.1.0"
+description = "Aseprite reader"
 edition = "2018"
+license = "Apache-2.0"
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,6 +12,6 @@ resolver = "2"
 [dependencies]
 flate2 = "1.0.20"
 image = { version = "0.23.14", default-features = false }
-nom = "6.2.1"
+nom = "7.1.0"
 thiserror = "1.0.26"
 tracing = "0.1.26"
